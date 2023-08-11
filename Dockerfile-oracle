@@ -1,0 +1,87 @@
+# This Dockerfile is a simplified version of the following:
+# https://github.com/vegardit/docker-graalvm-maven/blob/main/image/Dockerfile
+
+# Cannot use Alpine Linux with the GraalVM JDK distribution, must use Debian.
+FROM debian:stable-slim
+
+USER root
+
+SHELL ["/bin/bash", "-c"]
+ARG DEBIAN_FRONTEND=noninteractive
+ARG LC_ALL=C
+
+ARG USER=user
+ARG USER_HOME_DIR=/home/$USER
+ARG UID=1000
+ARG GID=$UID
+
+# Set locale and UTF-8 file encoding according to docs: https://hub.docker.com/_/debian
+RUN apt-get update -y && apt-get install -y locales && rm -rf /var/lib/apt/lists/* \
+	&& localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
+ENV LANG='en_US.UTF-8' LANGUAGE='en_US:en' LC_ALL='en_US.UTF-8'
+
+# Set time zone.
+RUN apt-get install -y tzdata
+ENV TZ="Europe/Oslo"
+
+RUN <<EOF
+  set -euo pipefail
+  alias ll='ls -l'
+
+  echo "#################################################"
+  echo "Adding default user ${USER} with group ${GID} and home dir ${USER_HOME_DIR}}"
+  echo "#################################################"
+
+  addgroup --gid $GID $USER
+  adduser --shell /bin/bash --home $USER_HOME_DIR --disabled-password --gid $GID --uid $UID --gecos "" $USER
+  chown -R $USER:$GID /usr/local $USER_HOME_DIR
+
+  echo "#################################################"
+  echo "Installing tools"
+  echo "#################################################"
+
+  apt-get update -y
+  apt-get install -y ca-certificates curl git jq
+
+  echo "#################################################"
+  echo "Installing Oracle GraalVM JDK"
+  echo "#################################################"
+
+  apt-get install -y gcc libstdc++-11-dev libz-dev
+  mkdir /opt/graalvm-jdk
+  curl -fL https://download.oracle.com/graalvm/20/latest/graalvm-jdk-20_linux-x64_bin.tar.gz | \
+     tar zxv -C /opt/graalvm-jdk --strip-components=1 \
+        --exclude=*/lib/src.zip
+
+  echo "#################################################"
+  echo "Installing Maven"
+  echo "#################################################"
+
+  mkdir /root/.m2
+  mkdir /opt/maven
+  # https://repo1.maven.org/maven2/org/apache/maven/apache-maven/maven-metadata.xml
+  curl -fL https://repo1.maven.org/maven2/org/apache/maven/apache-maven/3.9.3/apache-maven-3.9.3-bin.tar.gz | \
+    tar zxv -C /opt/maven --strip-components=1
+
+  echo "#################################################"
+  echo "Installing UPX"
+  echo "#################################################"
+
+  mkdir /opt/upx
+  # Copying upx files manually below due to problems decompressing from terminal.
+EOF
+
+# https://api.github.com/repos/upx/upx/releases/latest
+ADD docker/upx-4.0.2-amd64_linux /opt/upx
+
+ENV \
+  PATH="/opt/graalvm-jdk/bin:/opt/maven/bin:/opt/upx:${PATH}" \
+  JAVA_HOME=/opt/graalvm-jdk \
+  MAVEN_HOME=/opt/maven \
+  M2_HOME=/opt/maven \
+  MAVEN_CONFIG="/root/.m2"
+
+# Save build timestamp to file in a way which disables Docker cache.
+ADD http://date.jsontest.com /build-timestamp
+
+CMD ["/bin/bash"]

@@ -1,0 +1,27 @@
+# GraalVM container registry.
+# https://github.com/graalvm/container
+
+FROM ghcr.io/graalvm/graalvm-community:20.0.2-ol9
+
+RUN <<EOF
+  alias ll='ls -l'
+
+  echo "#################################################"
+  echo "Installing Maven"
+  echo "#################################################"
+
+  mkdir /root/.m2
+  mkdir /opt/maven
+  # https://repo1.maven.org/maven2/org/apache/maven/apache-maven/maven-metadata.xml
+  curl -fL https://repo1.maven.org/maven2/org/apache/maven/apache-maven/3.9.3/apache-maven-3.9.3-bin.tar.gz | \
+    tar zxv -C /opt/maven --strip-components=1
+EOF
+
+ENV \
+  PATH="/opt/maven/bin:${PATH}" \
+  MAVEN_HOME=/opt/maven \
+  M2_HOME=/opt/maven \
+  MAVEN_CONFIG="/root/.m2"
+
+# Save build timestamp to file in a way which disables Docker cache.
+ADD http://date.jsontest.com /build-timestamp
